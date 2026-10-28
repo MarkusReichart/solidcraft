@@ -914,6 +914,50 @@ fn v_toggles_what_is_selected() {
     assert_eq!(find(&context_menu::items(&app, &Target::Body { name: body(&app) }), "Show/Hide").shortcut, "V");
 }
 
+/// V pressed with a browser menu open runs that menu's Show/Hide, as its row says, on the row
+/// the menu was opened for: a folder, the Origin folder or an origin plane is not selected by
+/// the right-click, so V used to act on the selection instead (nothing, or another body).
+#[test]
+fn v_with_a_menu_open_shows_or_hides_what_the_menu_is_for() {
+    let mut h = crate::scenario::Harness::new();
+    h.app.run("solid.box", json!({"length": 10, "width": 20, "height": 30})).unwrap();
+    let b = body(&h.app);
+    let press_v = |h: &mut crate::scenario::Harness| {
+        for pressed in [true, false] {
+            h.app.synthetic.push(egui::Event::Key { key: egui::Key::V, physical_key: None, pressed, repeat: false, modifiers: Default::default() });
+        }
+        while !h.app.synthetic.is_empty() {
+            h.frame();
+        }
+        h.frames(2);
+    };
+    let open = |h: &mut crate::scenario::Harness, target: Target| {
+        context_menu::open_for(&mut h.app, pos2(300.0, 200.0), target);
+        h.frames(2);
+    };
+    // A body selected elsewhere is not what the folder's menu is for.
+    h.app.run("select.set", json!({"items": [{"type": "body", "name": b}]})).unwrap();
+    let bodies = Target::Folder { component: 0, folder: "bodies".into(), scope: "c0".into() };
+    for hidden in [true, false] {
+        open(&mut h, bodies.clone());
+        press_v(&mut h);
+        assert_eq!(h.app.session.folder_hidden("c0/bodies"), hidden, "V on the Bodies folder's menu");
+        assert!(h.app.viewport.context_menu.is_none(), "the menu closes as after a click");
+        assert!(!h.app.session.visibility.hidden_bodies.contains(&b), "the selected body is left alone");
+    }
+    let shown = h.app.origin_shown();
+    open(&mut h, Target::Origin);
+    press_v(&mut h);
+    assert_eq!(h.app.origin_shown(), !shown, "V on the Origin folder's menu");
+    open(&mut h, Target::OriginPlane { name: "XY".into() });
+    press_v(&mut h);
+    assert!(h.app.session.visibility.hidden_origin.iter().any(|o| o == "XY"), "V on an origin plane's menu");
+    assert!(!h.app.session.visibility.hidden_bodies.contains(&b));
+    // With no menu open, V still flips the selection.
+    press_v(&mut h);
+    assert!(h.app.session.visibility.hidden_bodies.contains(&b), "V without a menu acts on the selection");
+}
+
 #[test]
 fn named_views_save_restore_rename_and_delete() {
     let mut app = sample_app();

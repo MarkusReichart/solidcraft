@@ -1616,6 +1616,22 @@ pub fn delete(app: &mut SolveApp) {
     crate::delete::delete_selection(app);
 }
 
+/// A shortcut key pressed while a menu is open: the row of that menu showing `key` runs on the
+/// menu's target, as a click on it would, and the menu closes. A folder, the Origin folder or an
+/// origin plane is not selected by the right-click that opens its menu, so the key's own action
+/// (V on the selection) would miss it. Returns whether the open menu has a row for the key; a
+/// disabled row takes the key and does nothing, as a click on it does.
+pub fn press_shortcut(app: &mut SolveApp, key: &str) -> bool {
+    let Some(at) = app.viewport.context_menu else { return false };
+    let target = app.menu.target.clone();
+    let Some(item) = items(app, &target).into_iter().find(|i| i.shortcut == key && i.children.is_empty()) else { return false };
+    if item.enabled {
+        close(app);
+        run_item(app, &item, at);
+    }
+    true
+}
+
 /// Show/Hide (the V key): what is selected in the viewport or picked in the browser flips its
 /// visibility (bodies, faces' and edges' bodies, sketches, construction and origin planes and
 /// axes, components' bodies, canvases, joints' glyphs). When some are shown and some hidden, all are hidden.
