@@ -888,7 +888,9 @@ mod tests {
     fn every_link_path_goes_through_the_design_path_rule() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let code = |file: &str| {
-            let text = std::fs::read_to_string(root.join(file)).unwrap();
+            // A Windows checkout (core.autocrlf) has CRLF line endings: read the text as Git stores
+            // it, so the split below finds the test module.
+            let text = std::fs::read_to_string(root.join(file)).unwrap().replace("\r\n", "\n");
             // The code before its test module.
             text.split("\n#[cfg(test)]\n#[allow(clippy::unwrap_used").next().unwrap_or("").to_string()
         };
