@@ -1156,6 +1156,9 @@ const ELEMENTS: &[Element] = &[
     element!("text", "dialog:report:gallery", Some("dialog:report:gallery"), |ui, _| {
         text(ui, "Validation report with retained units: 10 mm", Text::Report("gallery", false));
     }),
+    element!("name_cell_with_hint", "dialog:cell:Width", Some("dialog:cell:Width"), |ui, _| {
+        name_cell_with_hint(ui, "Width", false, "Double-click to rename");
+    }),
     element!("search_field", |ui, s| {
         search_field(ui, ui.id().with("search"), &mut s.value, "Search");
     }),
