@@ -2152,6 +2152,8 @@
   "prefs.button_left": "左键拖动",
   "prefs.button_middle": "中键拖动",
   "prefs.button_right": "右键拖动",
+  "prefs.carousel_next": "下一个",
+  "prefs.carousel_previous": "上一个",
   "prefs.choose_font": "选择字体文件…",
   "prefs.click": "单击",
   "prefs.contact_shading": "柔和接触阴影",

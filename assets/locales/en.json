@@ -2152,6 +2152,8 @@
   "prefs.button_left": "Left drag",
   "prefs.button_middle": "Middle drag",
   "prefs.button_right": "Right drag",
+  "prefs.carousel_next": "Next",
+  "prefs.carousel_previous": "Previous",
   "prefs.choose_font": "Choose font file…",
   "prefs.click": "Click",
   "prefs.contact_shading": "Soft contact shading",

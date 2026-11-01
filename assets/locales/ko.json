@@ -1548,6 +1548,8 @@
   "prefs.button_left": "왼쪽 드래그",
   "prefs.button_middle": "가운데 드래그",
   "prefs.button_right": "오른쪽 드래그",
+  "prefs.carousel_next": "다음",
+  "prefs.carousel_previous": "이전",
   "prefs.choose_font": "글꼴 파일 선택…",
   "prefs.click": "클릭",
   "prefs.contact_shading": "부드러운 접촉 음영",
