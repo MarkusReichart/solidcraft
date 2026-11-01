@@ -1,0 +1,28 @@
+{
+  "pr": "https://github.com/tangency-labs/solidcraft/pull/10576",
+  "before": "Clean main b99d4ddd, OS keyboard reproduction",
+  "after": "Local fix on cda0277c, documented app-control events; GUI build before final rebase",
+  "assets": [
+    {
+      "name": "before-chat-paste.png",
+      "bytes": 1582377,
+      "width": 2560,
+      "height": 1392,
+      "sha256": "60d76aa17c06b6fa582d919bf3e83ba43d958a41947647dcd630b7d7e5b0179f"
+    },
+    {
+      "name": "after-chat-paste.png",
+      "bytes": 1585641,
+      "width": 2560,
+      "height": 1392,
+      "sha256": "28a4056576a0104cc6c7c2d8773f860cee0993a918aa248f7859703f906ddb69"
+    },
+    {
+      "name": "cad-paste-after-return.png",
+      "bytes": 1588413,
+      "width": 2560,
+      "height": 1392,
+      "sha256": "55caf9f4fdf0a86471507960544242f25ad7f17ed8485437bbd8845eac0ba8ba"
+    }
+  ]
+}
