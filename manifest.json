@@ -1,0 +1,20 @@
+{
+  "runtime": "SolidCraft 0.29.0, Windows 11 Home build 26300",
+  "assets": [
+    {
+      "name": "reply-no-message-copy.png",
+      "bytes": 1625355,
+      "sha256": "4a3ab4021a0e18d9f447180567aec4611179783b6221b3334b0114f3084d3bab"
+    },
+    {
+      "name": "composer-context-menu.png",
+      "bytes": 1647967,
+      "sha256": "25a7c2c841ce580ad507cbe22652e9aaa0abdcb32dc5d5511f937777fdb0211c"
+    },
+    {
+      "name": "select-all-only-first-paragraph.jpg",
+      "bytes": 53257,
+      "sha256": "41de466d1b4a2a314f97fb96f9798d69dba3dcf92546224f2a42be761f2c22d5"
+    }
+  ]
+}
