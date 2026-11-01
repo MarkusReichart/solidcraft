@@ -1875,7 +1875,7 @@ fn fillet_a_line_and_an_arc() {
 fn fillet_a_line_and_an_arc_drawn_to_meet_at_a_point() {
     // #1208: the arc starts at the line's end by coordinates, so the corner is two points held
     // together by a Coincident constraint. By point and by naming the two curves.
-    for how in [json!({"point": "l1.end"}), json!({"a": "l1", "b": "a1"})] {
+    for how in [json!({"point": "l1.end"}), json!({"a": "l1", "b": "a1"}), json!({"a": "a1", "b": "l1"})] {
         let mut s = new_sketch();
         run(&mut s, "sketch.line", json!({"points": [[0, 0], [40, 0]], "ids": ["l1"]}));
         run(&mut s, "sketch.arc.center_point", json!({"center": [50, 0], "start": [60, 0], "end": [40, 0], "id": "a1"}));
@@ -1941,6 +1941,38 @@ fn fillet_a_coincident_corner_that_a_dimension_measures_to() {
     }
 }
 
+#[test]
+fn fillet_coincident_line_and_arc_selection_order() {
+    for held in ["l1.end", "a1.end"] {
+        for (a, b) in [("l1", "a1"), ("a1", "l1")] {
+            let mut s = new_sketch();
+            run(&mut s, "sketch.line", json!({"points": [[0, 0], [40, 0]], "ids": ["l1"]}));
+            run(&mut s, "sketch.arc.center_point", json!({"center": [50, 0], "start": [60, 0], "end": [40, 0], "id": "a1"}));
+            // Keep the fixed sharp corner in place, whichever endpoint is fixed or picked
+            // first when rounding the same corner.
+            run(&mut s, "sketch.constraint.fix", json!({"entity": held}));
+            let before = serde_json::to_value(sketch(&s)).unwrap();
+            let f = run(&mut s, "sketch.fillet", json!({"a": a, "b": b, "radius": 3}));
+            let sk = sketch(&s);
+            let ai = sk.curve_index(&ids(&f["curves"])[0]).unwrap();
+            let want = Vec2::new(50.0 - 160f64.sqrt(), 3.0);
+            assert!((sk.radius(ai).unwrap() - 3.0).abs() < 1e-7, "{held}: {a}, {b}");
+            assert!(sk.center(ai).unwrap().dist(want) < 1e-6, "{held}: {a}, {b}");
+            let fixed = sk
+                .constraints
+                .iter()
+                .find_map(|c| match c.kind {
+                    ConstraintKind::Fix { p } => Some(p),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(sk.point(fixed).unwrap().dist(Vec2::new(40.0, 0.0)) < 1e-6);
+            assert_eq!(run(&mut s, "sketch.inspect", json!({}))["status"], "solved");
+            run(&mut s, "edit.undo", json!({}));
+            assert_eq!(serde_json::to_value(sketch(&s)).unwrap(), before);
+        }
+    }
+}
 #[test]
 fn chamfer_two_lines_drawn_to_meet_at_a_point() {
     let mut s = new_sketch();
