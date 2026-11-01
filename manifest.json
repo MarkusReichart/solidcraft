@@ -1,7 +1,8 @@
 {
   "pr": "https://github.com/tangency-labs/solidcraft/pull/10576",
-  "before": "Clean main b99d4ddd, OS keyboard reproduction",
-  "after": "Local fix on cda0277c, documented app-control events; GUI build before final rebase",
+  "before": "Clean b99d4ddd, OS keyboard reproduction",
+  "after": "Published head b005ce387ebdeaa2937e280350af3860c6060d6b, native Windows mouse/keyboard input",
+  "exe_sha256": "070e5ed76c3c53c8a35ae6b32ece415052e120d035cd6f5537c5a553cf1d8f49",
   "assets": [
     {
       "name": "before-chat-paste.png",
@@ -11,18 +12,14 @@
       "sha256": "60d76aa17c06b6fa582d919bf3e83ba43d958a41947647dcd630b7d7e5b0179f"
     },
     {
-      "name": "after-chat-paste.png",
-      "bytes": 1585641,
-      "width": 2560,
-      "height": 1392,
-      "sha256": "28a4056576a0104cc6c7c2d8773f860cee0993a918aa248f7859703f906ddb69"
+      "name": "after-chat-paste-native.jpg",
+      "bytes": 235095,
+      "sha256": "079a7bd9a028a4f3c94771e4fb90c85dd645432276fdc8876ecf95c8baa10dba"
     },
     {
-      "name": "cad-paste-after-return.png",
-      "bytes": 1588413,
-      "width": 2560,
-      "height": 1392,
-      "sha256": "55caf9f4fdf0a86471507960544242f25ad7f17ed8485437bbd8845eac0ba8ba"
+      "name": "cad-paste-after-return-native.jpg",
+      "bytes": 242777,
+      "sha256": "7b5d49eb4b79597538f81725014fe3934fa24ecd09642a17910a8afe03feeb2c"
     }
   ]
 }

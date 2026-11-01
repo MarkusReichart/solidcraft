@@ -1,12 +1,10 @@
 # Screenshots for SolidCraft PR #10576
 
-Public-safe Sample Plate and synthetic transcript. No profiles, tokens or private designs.
+Public-safe Sample Plate and synthetic transcript; no private designs, profiles or tokens.
 
-- Before: chat paste inserts a second body while transcript text remains selected.
-- After: with a previously filled CAD clipboard, chat paste leaves one body.
-- Control: clicking back into CAD restores deliberate paste and inserts the second body.
+- Before: clean b99d4ddd, OS paste in chat inserts a second CAD body.
+- After: published head b005ce38, native Windows paste in chat leaves one body and no undo entry.
+- Control: same published build, native click back into CAD and paste inserts the second body.
 
-The after images are from the pre-rebase local GUI build; final-head tests are documented in the PR.
-See manifest.json for capture context and SHA-256 hashes.
-
-This isolated evidence branch is not part of the code PR. Keep it while the PR links to these captures.
+Native captures replace the initial pre-rebase after/control images. See manifest.json for hashes.
+This separate evidence branch is not part of the code PR. Keep it while the PR references it.
