@@ -3181,8 +3181,10 @@ pub fn shortcuts(app: &mut SolveApp, ctx: &egui::Context) {
                 }
             }
             Key::F2 => {
-                let at = ctx.input(|i| i.pointer.latest_pos()).unwrap_or(ctx.content_rect().center());
-                crate::context_menu::rename_selection(app, at);
+                if !crate::context_menu::press_shortcut(app, "F2") {
+                    let at = ctx.input(|i| i.pointer.latest_pos()).unwrap_or(ctx.content_rect().center());
+                    crate::context_menu::rename_selection(app, at);
+                }
             }
             Key::F6 => app.animate_view("fit"),
             Key::Backspace if crate::tools::undo_spline_point(app) => {}
