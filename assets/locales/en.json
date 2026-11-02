@@ -1216,6 +1216,7 @@
   "cmd.sketch_spline_control_point_5": "Control Point Spline (Degree 5)",
   "cmd.sketch_spline_fit_point": "Fit Point Spline",
   "cmd.sketch_spline_insert_point": "Add Spline Point",
+  "cmd.sketch_spline_remove_point": "Remove Spline Point",
   "cmd.sketch_spline_reverse": "Reverse Spline Direction",
   "cmd.sketch_spun_profile": "Spun Profile",
   "cmd.sketch_toggle_diameter": "Toggle Radius / Diameter",

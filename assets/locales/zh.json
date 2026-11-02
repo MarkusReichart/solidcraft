@@ -1216,6 +1216,7 @@
   "cmd.sketch_spline_control_point_5": "控制点样条曲线（5 次）",
   "cmd.sketch_spline_fit_point": "拟合点样条曲线",
   "cmd.sketch_spline_insert_point": "添加样条曲线点",
+  "cmd.sketch_spline_remove_point": "删除样条曲线点",
   "cmd.sketch_spline_reverse": "反向样条曲线方向",
   "cmd.sketch_spun_profile": "旋转轮廓",
   "cmd.sketch_toggle_diameter": "切换半径 / 直径",
