@@ -1554,6 +1554,12 @@ impl SolveApp {
             }
             return;
         }
+        if id == "ui.assistant" {
+            if agent_chat::shown(self) {
+                agent_chat::toggle(self);
+            }
+            return;
+        }
         if id == "ui.palette" {
             shortcut_box::open(self, None);
             return;
@@ -2822,6 +2828,7 @@ impl SolveApp {
             if !keymap::capturing(self) {
                 expression_complete::begin_frame(ctx);
             }
+            agent_chat::toggle_shortcut(self, ctx);
             // A digit for a construction line's Length box is not a shortcut (#10258).
             sketch_construction::claim_typed_length(self, ctx);
             if !self.embedded {
