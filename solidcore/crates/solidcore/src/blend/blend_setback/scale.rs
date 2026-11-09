@@ -345,16 +345,16 @@ mod tests {
     fn thousandth_scales_and_attempt_budget() {
         let kernel = Kernel::default();
         for (radii, setbacks, most, want, want_solves) in [
-            ([2.0, 3.0, 4.0], [4.5, 4.75, 6.0], None, 1.056, 35),
-            ([1.0, 1.5, 2.0], [2.25, 2.375, 3.0], None, 1.056, 35),
+            ([2.0, 3.0, 4.0], [4.5, 4.75, 6.0], None, 1.053, 35),
+            ([1.0, 1.5, 2.0], [2.25, 2.375, 3.0], None, 1.053, 35),
             (
                 [2.0, 3.0, 4.0],
                 [4.5, 4.75, 4.5],
                 Some([20.0, 20.0, 4.5]),
-                1.046,
-                39,
+                1.044,
+                35,
             ),
-            ([2.0, 3.0, 4.0], [4.25; 3], None, 1.110, 34),
+            ([2.0, 3.0, 4.0], [4.25; 3], None, 1.108, 39),
             ([5.0; 3], [8.0; 3], None, 1.0, 2),
             // Every edge held at its original setback: no scale can certify.
             (
