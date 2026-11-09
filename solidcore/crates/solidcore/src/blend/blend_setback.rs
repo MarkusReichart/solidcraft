@@ -47,8 +47,9 @@
 //! across (`w_j -> w_j c^j`) and a reversal; the standard form (the row's end weights equal, at
 //! every rail parameter, to the jets' order) removes the map, the cycle the reversal. With the
 //! rails' mean arc length along, two parametrizations of one round give the same jets. The
-//! planar fills take them as their rounds' rows; beside a curved face, and where the fill's
-//! order at the rounds is above its faces', rows 0 and 1 come from `geometric_rows` instead.
+//! planar G2 fill takes them as its rounds' rows; the planar G1 fill, a fill beside a curved
+//! face, and one whose order at the rounds is above its faces' take rows 0 and 1 from
+//! `geometric_rows` instead (#13832 ruling 12201 (a)), so a circle's rows follow one rule.
 //! A G2 fill's setback patch measures its spoke on the rows it takes.
 //!
 //! Faces are planes (a curved face is not filled here yet). Every patch lies in the convex
@@ -2273,8 +2274,8 @@ fn fill_hole_with(
         let RoundJets { h, q } =
             round_jets(kernel, round, if any_curved { smax_usize(k, 2) } else { k })?;
         // beside circular rounds a fill of a higher order than its faces' (G2 to the rounds,
-        // G1 to the faces) takes their rows from their geometry
-        let (h, q) = if kf < k {
+        // G1 to the faces), and the planar G1 fill, take their rows from their geometry
+        let (h, q) = if kf < k || (k == 1 && !any_curved) {
             geometric_rows(&h, q, k)?
         } else {
             (h, q)
