@@ -1396,7 +1396,7 @@ fn tensor_scalar(c: &Crv, f: &Crv) -> Result<Srf> {
     };
     for cs in &c.seg {
         for fs in &f.seg {
-            let mut pts = Vec::with_capacity((s.du + 1) * (s.dv + 1));
+            let mut pts = Vec::new();
             for q in cs {
                 for h in fs {
                     pts.push(mul(*q, h[0]));
