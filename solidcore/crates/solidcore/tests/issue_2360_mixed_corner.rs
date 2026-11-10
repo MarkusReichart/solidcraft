@@ -400,6 +400,52 @@ fn chamfers_together_d2() {
     graded(2.0, true);
 }
 
+/// Chamfers d 2: each Mixed corner face stays on the material's side of the front face
+/// y = 0, sampled over its whole (untrimmed) domain on a 160 x 160 grid, to the part's
+/// rounding. The body's tight box misses a lip there, so `chamfers_together_d2` cannot
+/// see it: the bilinear patch of the face L (X, A, P, V) reaches y = -7.21e-4 beside the
+/// seam's line P-V (#13755).
+#[test]
+fn the_mixed_chamfer_faces_stay_behind_the_front_face() {
+    let (k, b, res) = blended(2.0, 0);
+    res.unwrap();
+    let faces = corner_faces(&b, CornerKind::Mixed);
+    assert_eq!(faces.len(), 2, "the corner's faces L and U");
+    for s in &faces {
+        let net = bspline_net(s).unwrap();
+        let least_net = net
+            .control_points()
+            .unwrap()
+            .2
+            .iter()
+            .map(|p| if p.w > 0.0 { p.y / p.w } else { p.y })
+            .fold(f64::INFINITY, f64::min);
+        let d = s.natural_uv_domain_with_nurb(&k).unwrap();
+        let mut least = (f64::INFINITY, 0.0, 0.0);
+        for i in 0..=160 {
+            for j in 0..=160 {
+                let u = d.min().x + (d.max().x - d.min().x) * f64::from(i) / 160.0;
+                let v = d.min().y + (d.max().y - d.min().y) * f64::from(j) / 160.0;
+                let y = s.evaluate_point(&k, Point2::new(u, v)).unwrap().y;
+                if y < least.0 {
+                    least = (y, u, v);
+                }
+            }
+        }
+        eprintln!(
+            "least y {:e} at ({}, {}); least control point y {least_net:e}",
+            least.0, least.1, least.2
+        );
+        assert!(
+            least.0 >= -1e-10,
+            "least y {:e} at ({}, {})",
+            least.0,
+            least.1,
+            least.2
+        );
+    }
+}
+
 // ---- #2488: a Mixed corner's faces keep their rule ----
 
 use solidcore::surface::procedural_blend::convert::{corner_rebuild, corner_to_record};
