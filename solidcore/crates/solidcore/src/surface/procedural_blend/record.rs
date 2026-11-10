@@ -737,7 +737,8 @@ pub struct MixedCornerRecord {
     pub common: SupportRecord,
     /// The four sides c0, c1, d0, d1.
     pub sides: Vec<MixedSideRecord>,
-    /// Whether the rule is the bilinear Coons patch.
+    /// Whether the rule is the chamfer's Coons patch (bilinear unless two sides lie in a
+    /// plane wall).
     pub bilinear: bool,
     /// Whether the patch is turned.
     pub transposed: bool,
