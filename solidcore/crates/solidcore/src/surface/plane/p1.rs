@@ -31,7 +31,7 @@
 //! | [`Plane::is_planar`], [`Plane::is_on_seam`], [`Plane::is_closed`] | `IsPlanar`, `IsOnSeam`, `IsClosed` (inline) |
 //! | [`Plane::make_nurb`]                          | `MakeNurb`                                        |
 //! | [`Plane::project_point_to_uv_domain`]         | `ProjectPointToUVDomain`                          |
-//! | [`Plane::reparameterize`], [`Plane::reparameterize_opt_in`], [`Plane::reparameterize_with_kernel`] | `Reparameterize` |
+//! | [`Plane::reparameterize`]                    | `Reparameterize`                                  |
 //! | [`Plane::toggle_swap_uv_bit`]                 | `ToggleSwapUVBit`                                 |
 //! | [`Plane::rebuild_step_from_nurb_parameters`]  | `RebuildSTEPFromNURBParameters`                   |
 //! | [`Plane::step_uv_domain`], [`Plane::position`], [`Plane::uv_scale`] | `GetSTEPUVDomain`, `GetPosition`, `GetUVScale` |
@@ -77,11 +77,9 @@
 //! - **`Reparameterize`** computes a new origin only in debug code: the release
 //!   build keeps the old origin while changing the scales and the domain, so the
 //!   analytic plane moves unless the new domain starts where the old one did. The
-//!   port keeps that by default (`plan/findings.md`), with an opt-in fix
-//!   [`Kernel::fixes.plane_reparameterize_moves_origin`] (WR-41) via
-//!   [`Plane::reparameterize_opt_in`] and [`Plane::reparameterize_with_kernel`] that
-//!   updates the origin to `origin_max`. Its `Notify` calls only drop caches and
-//!   inform owners and are omitted, as for B-splines.
+//!   port moves the origin to `origin_max`, so the plane stays where its NURB is
+//!   (WR-41). Its `Notify` calls only drop caches and inform owners and are omitted,
+//!   as for B-splines.
 //! - **`IsParallelToVector`** (inherited from `SmBSplineSurface`) returns the failed
 //!   `Unitize` status (`SM_ERR_INVALID_INPUT`, nonzero) as `SmBoolean` for a zero
 //!   vector, so upstream callers see `TRUE`. The port keeps `true` by default, with an
@@ -833,70 +831,37 @@ impl Plane {
         self.make_nurb()
     }
 
-    /// Maps the domain onto `trim_domain` (`Reparameterize`), optionally updating
-    /// the placement origin to `origin_max` when `move_origin` is true (WR-41).
-    ///
-    /// # Errors
-    ///
-    /// Those of [`BSplineSurface::reparameterize`] (`SM_ERR_NULL_POINTER` when no
-    /// NURB can be made).
-    pub fn reparameterize_opt_in(
-        &mut self,
-        trim_domain: &Extent2d,
-        move_origin: bool,
-    ) -> Result<()> {
-        // Get new Analytic parameters
-        let scale_x = (self.uv_scale.x * self.anal_uv_domain.x_length()) / trim_domain.x_length();
-        let scale_y = (self.uv_scale.y * self.anal_uv_domain.y_length()) / trim_domain.y_length();
-
-        let origin_max = if move_origin {
-            let point_max = self.position.origin()
-                + self.position.x_axis() * (self.uv_scale.x * self.anal_uv_domain.u_max())
-                + self.position.y_axis() * (self.uv_scale.y * self.anal_uv_domain.v_max());
-            Some(
-                point_max
-                    - self.position.x_axis() * (scale_x * trim_domain.u_max())
-                    - self.position.y_axis() * (scale_y * trim_domain.v_max()),
-            )
-        } else {
-            None
-        };
-
-        // set NURB domain parameterization - no change in shape
-        self.ensure_nurb();
-        self.base.reparameterize(trim_domain)?;
-
-        if let Some(origin) = origin_max {
-            self.position.set_origin(origin);
-        }
-
-        // Set Analytic domain parameterization - no change in shape
-        self.anal_uv_domain = *trim_domain;
-        self.uv_scale = Vec2::new(scale_x, scale_y);
-        Ok(())
-    }
-
-    /// Maps the domain onto `trim_domain` with kernel opt-in fixes applied (`Reparameterize`).
-    ///
-    /// # Errors
-    ///
-    /// Those of [`BSplineSurface::reparameterize`] (`SM_ERR_NULL_POINTER` when no
-    /// NURB can be made).
-    pub fn reparameterize_with_kernel(&mut self, k: &Kernel, trim_domain: &Extent2d) -> Result<()> {
-        self.reparameterize_opt_in(trim_domain, k.fixes.plane_reparameterize_moves_origin)
-    }
-
     /// Maps the domain onto `trim_domain` (`Reparameterize`): the NURB is
     /// re-parameterised without changing its shape; the analytic domain becomes
-    /// `trim_domain` and the scales `su * |old u| / |new u|`, `sv * |old v| / |new
-    /// v|`; the origin is kept (see the module docs).
+    /// `trim_domain`, the scales `su * |old u| / |new u|`, `sv * |old v| / |new v|`,
+    /// and the origin moves so that the old domain's far corner stays where it is
+    /// (`origin_max`, WR-41; upstream computes it only in debug code).
     ///
     /// # Errors
     ///
     /// Those of [`BSplineSurface::reparameterize`] (`SM_ERR_NULL_POINTER` when no
     /// NURB can be made).
     pub fn reparameterize(&mut self, trim_domain: &Extent2d) -> Result<()> {
-        self.reparameterize_opt_in(trim_domain, false)
+        // Get new Analytic parameters
+        let scale_x = (self.uv_scale.x * self.anal_uv_domain.x_length()) / trim_domain.x_length();
+        let scale_y = (self.uv_scale.y * self.anal_uv_domain.y_length()) / trim_domain.y_length();
+
+        let point_max = self.position.origin()
+            + self.position.x_axis() * (self.uv_scale.x * self.anal_uv_domain.u_max())
+            + self.position.y_axis() * (self.uv_scale.y * self.anal_uv_domain.v_max());
+        let origin_max = point_max
+            - self.position.x_axis() * (scale_x * trim_domain.u_max())
+            - self.position.y_axis() * (scale_y * trim_domain.v_max());
+
+        // set NURB domain parameterization - no change in shape
+        self.ensure_nurb();
+        self.base.reparameterize(trim_domain)?;
+        self.position.set_origin(origin_max);
+
+        // Set Analytic domain parameterization - no change in shape
+        self.anal_uv_domain = *trim_domain;
+        self.uv_scale = Vec2::new(scale_x, scale_y);
+        Ok(())
     }
 
     /// Transposes the STEP definition so that `Plane(u, v) = SwapPlane(v, u)`: swaps
