@@ -2819,35 +2819,7 @@ mod tests {
     }
 
     #[test]
-    fn wr41_plane_reparam_default_keeps_origin() {
-        let mut p = Plane::new(
-            Point3::new(10.0, 20.0, 30.0),
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec2::new(2.0, 3.0),
-            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-        );
-        let orig_origin = p.position().origin();
-        assert_eq!(orig_origin, Point3::new(10.0, 20.0, 30.0));
-
-        let new_domain = Extent2d::from_bounds(2.0, 3.0, 5.0, 7.0);
-        p.reparameterize(&new_domain).unwrap();
-
-        // Default behavior (pinned C++ parity) does not move the placement origin
-        assert_eq!(p.position().origin(), orig_origin);
-
-        // Consequently, analytic plane evaluation diverges from base NURB evaluation
-        let pt_analytic = p.evaluate_point(Point2::new(2.0, 3.0));
-        let pt_nurb = p
-            .base_with_nurb()
-            .unwrap()
-            .evaluate_point(Point2::new(2.0, 3.0))
-            .unwrap();
-        assert!(pt_analytic.distance(pt_nurb) > 1.0);
-    }
-
-    #[test]
-    fn wr41_plane_reparam_opt_in_moves_origin_matches_nurb() {
+    fn wr41_plane_reparam_moves_origin_matches_nurb() {
         let mut p = Plane::new(
             Point3::new(10.0, 20.0, 30.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -2857,11 +2829,8 @@ mod tests {
         );
         let old_mid_pt = p.evaluate_point(Point2::new(0.5, 0.5));
 
-        let mut k = Kernel::default();
-        k.fixes.plane_reparameterize_moves_origin = true;
-
         let new_domain = Extent2d::from_bounds(2.0, 3.0, 5.0, 7.0);
-        p.reparameterize_with_kernel(&k, &new_domain).unwrap();
+        p.reparameterize(&new_domain).unwrap();
 
         // Origin moved away from initial (10, 20, 30)
         assert_ne!(p.position().origin(), Point3::new(10.0, 20.0, 30.0));
@@ -2889,24 +2858,6 @@ mod tests {
     #[test]
     fn wr41_plane_reparam_via_surface_dispatcher() {
         let domain = Extent2d::from_bounds(2.0, 3.0, 6.0, 7.0);
-
-        // Without fix
-        let mut s_default = Surface::from(Plane::new(
-            Point3::new(5.0, 5.0, 5.0),
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec2::new(1.0, 1.0),
-            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
-        ));
-        let k_default = Kernel::default();
-        s_default.reparameterize(&k_default, &domain).unwrap();
-        if let SurfaceKind::Plane(plane) = s_default.kind() {
-            assert_eq!(plane.position().origin(), Point3::new(5.0, 5.0, 5.0));
-        } else {
-            panic!("expected SurfaceKind::Plane");
-        }
-
-        // With fix
         let mut s_fixed = Surface::from(Plane::new(
             Point3::new(5.0, 5.0, 5.0),
             Vec3::new(1.0, 0.0, 0.0),
@@ -2914,9 +2865,7 @@ mod tests {
             Vec2::new(1.0, 1.0),
             &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
         ));
-        let mut k_fixed = Kernel::default();
-        k_fixed.fixes.plane_reparameterize_moves_origin = true;
-        s_fixed.reparameterize(&k_fixed, &domain).unwrap();
+        s_fixed.reparameterize(&Kernel::default(), &domain).unwrap();
         if let SurfaceKind::Plane(plane) = s_fixed.kind() {
             assert_ne!(plane.position().origin(), Point3::new(5.0, 5.0, 5.0));
             let pt_analytic = plane.evaluate_point(Point2::new(4.0, 5.0));
@@ -2932,7 +2881,7 @@ mod tests {
     }
 
     #[test]
-    fn wr41_plane_reparam_opt_in_arbitrary_frame_and_scale() {
+    fn wr41_plane_reparam_arbitrary_frame_and_scale() {
         let mut p = Plane::new(
             Point3::new(-15.0, 4.2, 100.0),
             Vec3::new(0.0, 1.0, 0.0),
@@ -2941,7 +2890,7 @@ mod tests {
             &Extent2d::from_bounds(-2.0, -1.0, 4.0, 5.0),
         );
         let new_domain = Extent2d::from_bounds(10.0, 20.0, 30.0, 60.0);
-        p.reparameterize_opt_in(&new_domain, true).unwrap();
+        p.reparameterize(&new_domain).unwrap();
 
         for u in [10.0, 15.0, 20.0, 25.0, 30.0] {
             for v in [20.0, 30.0, 40.0, 50.0, 60.0] {
