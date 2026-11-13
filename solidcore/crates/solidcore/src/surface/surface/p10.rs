@@ -540,6 +540,15 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
             return Ok(false);
         }
 
+        // A ray starts at t = 0 (within the margin above), as the plane's override
+        // has it: guesses and solves stay ahead of the start. A leaf the line crosses
+        // on both sides of the start (a ray from inside a cylinder whose entry and
+        // exit lie in one span) otherwise converges on the entry behind it, skips it,
+        // and never looks for the exit beside it.
+        if self.ray_fire {
+            bound_ivl.set_min(max2(bound_ivl.min(), -2.0 * self.base.tolerance_3d))?;
+        }
+
         // no work - if given, m_cpLineInterval doesn't overlap sBoxIvl
         if let Some(line_ivl) = &self.line_interval {
             if line_ivl.are_disjoint(&bound_ivl, 0.0) {
@@ -1764,6 +1773,44 @@ mod tests {
             assert_eq!(typed.is_port_failure(), before.is_port_failure());
             assert_eq!(typed.is_status_answer(), before.is_status_answer());
             assert_eq!(typed.surface_failure(), Some(&failure));
+        }
+    }
+
+    /// A ray from 0.5 mm inside a cylinder r 125, 10 and 12 degrees before its seam,
+    /// fired at 100 degrees to the seam's direction: its line enters the wall behind
+    /// the start and leaves it ahead, and the leaf solve meets the entry first. The ray
+    /// gives the exit, and the line both crossings, with or without the fixes.
+    #[test]
+    fn ray_from_inside_a_cylinder_finds_the_exit_beside_the_entry_behind_it() {
+        let (r, rho, tol) = (125.0_f64, 124.5_f64, 1e-5);
+        let dir = Vec3::new((-100.0_f64).to_radians().cos(), (-100.0_f64).to_radians().sin(), 0.0);
+        for kernel in [Kernel::default(), Kernel { fixes: crate::kernel::UpstreamFixes::all(), ..Kernel::default() }] {
+            let s = Surface::from(
+                crate::primitive::api_primitives::create_cylinder_surface(&kernel, Vec3::ZERO, r, 12.0).unwrap(),
+            );
+            let domain = s.natural_uv_domain_with_nurb(&kernel).unwrap();
+            for deg in [-10.0_f64, -12.0] {
+                let start = Vec3::new(rho * deg.to_radians().cos(), rho * deg.to_radians().sin(), 6.0);
+                // |start + t dir| = r in the plane z = 6
+                let b = start.x * dir.x + start.y * dir.y;
+                let root = (b * b - (rho * rho - r * r)).sqrt();
+                let (entry, exit) = (-b - root, -b + root);
+                // a point within `tol` of the wall is within tol / sin(the ray's angle to
+                // the wall) of the crossing along the ray
+                let t_tol = tol * r / root;
+                let ray = s
+                    .global_line_intersect(&kernel, H(0), &domain, start, dir, None, true, tol)
+                    .unwrap();
+                let ts: Vec<f64> = ray.as_slice().iter().map(|sol| sol.start.parameters[0]).collect();
+                assert_eq!(ts.len(), 1, "ray from {deg} degrees: {ts:?}, exit {exit}");
+                assert!((ts[0] - exit).abs() <= t_tol, "ray from {deg} degrees: {ts:?}, exit {exit}");
+                let line = s
+                    .global_line_intersect(&kernel, H(0), &domain, start, dir, None, false, tol)
+                    .unwrap();
+                let ts: Vec<f64> = line.as_slice().iter().map(|sol| sol.start.parameters[0]).collect();
+                assert_eq!(ts.len(), 2, "line from {deg} degrees: {ts:?}");
+                assert!((ts[0] - entry).abs() <= t_tol && (ts[1] - exit).abs() <= t_tol, "{ts:?}, {entry} {exit}");
+            }
         }
     }
 }
