@@ -51,8 +51,10 @@
 //!   a cylinder's top missed the crossing ahead. Such a leaf of a ray is solved part by
 //!   part ([`LsiGlobalSolver::parts_crossed_once`]): halved until each part's normal map
 //!   has no perpendicular to the line, so each holds at most one crossing, or until its
-//!   normals lie within the angular tolerance. A whole line's leaf, and a leaf without a
-//!   perpendicular, is solved as upstream solves it.
+//!   normals lie within the angular tolerance; in a part that may still be crossed twice,
+//!   a first crossing more than the tolerance behind the start adds a guess ahead of it.
+//!   A whole line's leaf, and a leaf without a perpendicular, is solved as upstream
+//!   solves it.
 //! - **Bounds.** Each leaf, or part of one, takes at most six guesses (upstream's fixed
 //!   arrays). A leaf is halved into at most [`MAX_PARTS`] parts, [`MAX_PART_DEPTH`]
 //!   deep, with an explicit stack; a leaf whose surface cannot bound a part on its own
@@ -519,7 +521,12 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
     /// crossings kept to `base.solutions`. `once`: the line crosses `leaf` at most once
     /// (its normal map has no direction perpendicular to the line), so its first crossing
     /// kept ends the solve, and true is returned; otherwise every guess is followed,
-    /// with the search for a near-tangent second crossing, and false is returned.
+    /// with the search for a near-tangent second crossing, and false is returned. A ray's
+    /// first crossing more than the tolerance behind its start, where `leaf` may be
+    /// crossed twice, adds a guess from the middle of the interval ahead of the start
+    /// (not upstream's, WR-758): upstream skipped it before any other guess, so the
+    /// crossing ahead was never looked for. A start within the tolerance of its first
+    /// crossing lies on the surface, and that crossing is skipped as upstream skips it.
     fn solve_part(&mut self, k: &Kernel, leaf: &LsiLeaf<'s, O>, once: bool) -> Result<bool> {
         let domain = leaf.domain;
         let interval = leaf.interval;
@@ -530,8 +537,9 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
         let mut t_guesses = Vec::new();
 
         // Let SurfaceGuessPoint = Drop LinePoint down to SurfacePoint Tangent Plane
+        let (line_point, line_vector) = (self.line_point, self.line_vector);
         let drop = |uv: Point2, t: f64| -> Result<Point2> {
-            let point = self.line_point + t * self.line_vector;
+            let point = line_point + t * line_vector;
             super::p7::drop_points_to_tangent_plane(
                 k,
                 leaf.eval,
@@ -605,6 +613,23 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
             if self.ray_fire {
                 let scaled_zero = EFF_ZERO * (1.0 + self.line_point.max_dimension());
                 if hit.t < -scaled_zero {
+                    // a part crossed twice may be crossed ahead of the start as well; a
+                    // crossing within the tolerance behind is the start lying on the part
+                    if !once
+                        && index < 1
+                        && hit.t < -self.base.tolerance_3d
+                        && interval.max() > scaled_zero
+                        && uv_guesses.len() < MAX_GUESSES
+                    {
+                        let t = 0.5 * (max2(interval.min(), 0.0) + interval.max());
+                        let uv = match drop(domain.evaluate(0.5, 0.5), t) {
+                            Ok(uv) => domain.clamp_point(uv),
+                            Err(e) if e.is_unported_or_cancelled() => return Err(e),
+                            Err(_) => domain.evaluate(0.5, 0.5),
+                        };
+                        uv_guesses.push(uv);
+                        t_guesses.push(t);
+                    }
                     continue;
                 }
             }
