@@ -2025,4 +2025,75 @@ mod tests {
             assert_eq!(typed.surface_failure(), Some(&failure));
         }
     }
+
+    /// `(u, v, c u^2)` over `u` in `[a, b]`, `v` in `[0, 1]`: one quadratic span in `u`.
+    fn parabola(c: f64, a: f64, b: f64) -> Surface {
+        let column =
+            |x: f64, z: f64| vec![CPoint::new(x, 0.0, z, NOW), CPoint::new(x, 1.0, z, NOW)];
+        let net = vec![
+            column(a, c * a * a),
+            column(0.5 * (a + b), c * a * b),
+            column(b, c * b * b),
+        ];
+        let n = crate::nurbs::srf_basic::Surface::new(
+            net,
+            2,
+            1,
+            vec![a, a, a, b, b, b],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        Surface::from(BSplineSurface::from_nurb(n, false))
+    }
+
+    /// A ray along `u` at height `c (l/2)^2` over the parabola `(u, v, c u^2)`, `u` in
+    /// `[-2l, l]`: its line crosses it at `u = -l/2` and `u = l/2`, and the ray keeps
+    /// the closest crossing ahead of its start, from starts either side of the top and
+    /// one before both crossings. The leaf's normals spread by about `6 c l`, within the
+    /// angular tolerance, but the leaf is far thicker than the tolerance: kept whole, its
+    /// solve met the crossing behind the start first and never looked for the one ahead.
+    #[test]
+    fn ray_over_a_flat_parabola_finds_the_crossing_ahead_of_one_behind() {
+        let k = Kernel::default();
+        let tol = 1e-6;
+        for (c, l) in [(1e-4, 10.0), (1e-5, 100.0), (1e-3, 1.0)] {
+            let s = parabola(c, -2.0 * l, l);
+            let dom = Extent2d::from_bounds(-2.0 * l, 0.0, l, 1.0);
+            for x0 in [-0.6 * l, -0.1 * l, 0.0, 0.1 * l] {
+                let start = Point3::new(x0, 0.5, c * l * l / 4.0);
+                let ts = |ray: bool| -> Vec<f64> {
+                    let sols = s
+                        .global_line_intersect::<H>(
+                            &k,
+                            H(0),
+                            &dom,
+                            start,
+                            Vec3::new(1.0, 0.0, 0.0),
+                            None,
+                            ray,
+                            tol,
+                        )
+                        .unwrap();
+                    sols.as_slice()
+                        .iter()
+                        .map(|sol| sol.start.parameters[0])
+                        .collect()
+                };
+                let (behind, ahead) = (-0.5 * l - x0, 0.5 * l - x0);
+                let closest = if behind > 0.0 { behind } else { ahead };
+                // the solves land within about 1e-13 l of the crossings
+                let near = |t: f64, want: f64| (t - want).abs() <= 1e-9 * l;
+                let ray = ts(true);
+                assert!(
+                    ray.len() == 1 && near(ray[0], closest),
+                    "c {c}, l {l}, ray from {x0}: {ray:?}, want [{closest}]"
+                );
+                let line = ts(false);
+                assert!(
+                    line.len() == 2 && near(line[0], behind) && near(line[1], ahead),
+                    "c {c}, l {l}, line from {x0}: {line:?}, want [{behind}, {ahead}]"
+                );
+            }
+        }
+    }
 }
