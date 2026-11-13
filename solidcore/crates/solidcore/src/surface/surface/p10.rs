@@ -55,8 +55,9 @@
 //!   perpendicular, is solved as upstream solves it.
 //! - **Bounds.** Each leaf, or part of one, takes at most six guesses (upstream's fixed
 //!   arrays). A leaf is halved into at most [`MAX_PARTS`] parts, [`MAX_PART_DEPTH`]
-//!   deep, with an explicit stack; a leaf whose surface cannot bound a part on its own
-//!   (an offset surface) is not halved. No recursion.
+//!   deep, with an explicit stack; a part the line may still cross twice at either limit
+//!   refuses the solve ([`SolidError::Unsupported`]). A leaf whose surface cannot bound
+//!   a part on its own (an offset surface) is not halved. No recursion.
 
 use super::p1::{is_node_valid, is_surface_cache_owner, surface_to_evaluate};
 use super::p2::{original_surface, LsiGlobalSolver, Surface, TsectCurveType};
@@ -315,13 +316,13 @@ fn pseudo_hit(hit: &Result<PseudoHit>) -> Option<(u32, f64, f64)> {
 // ---- SmLSIGlobalSolver::LocalSolve -------------------------------------------------------------
 
 /// The most halvings [`LsiGlobalSolver::parts_crossed_once`] makes of a leaf: a part's
-/// side is then at least 2^-20 of the leaf's (about a millionth), below which two
-/// crossings of a line are one near-tangent crossing for the part's guesses.
+/// side is then at least 2^-20 of the leaf's (about a millionth). A part the line may
+/// still cross twice there refuses the solve.
 const MAX_PART_DEPTH: u32 = 20;
 
-/// The most parts [`LsiGlobalSolver::parts_crossed_once`] makes of a leaf: a part left to
-/// halve when the parts made and waiting reach it is kept as it is, crossed perhaps more
-/// than once, so a leaf's solve is bounded whatever its normal map does.
+/// The most parts [`LsiGlobalSolver::parts_crossed_once`] makes of a leaf, so a leaf's
+/// solve is bounded whatever its normal map does: a part the line may still cross twice
+/// when the parts made and waiting reach it refuses the solve.
 const MAX_PARTS: usize = 256;
 
 /// A part of a leaf's domain the line may cross ([`LsiGlobalSolver::parts_crossed_once`]).
@@ -672,15 +673,20 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
     /// the line (the normal-cone condition of Sederberg and Meyers, 1988: the line then
     /// crosses the part at most once, `once`). A part whose box (grown by the tolerance)
     /// the line misses within `leaf`'s interval, or only behind a ray's start, is
-    /// dropped; each part kept carries the line interval its box allows. A part that
-    /// still has a perpendicular after [`MAX_PART_DEPTH`] halvings is a near-tangent
-    /// spot, kept with `once` false, as is one whose normals cannot be bounded and one
-    /// whose normals lie within the angular tolerance ([`ANG_TOL_RAD`]): halving a flat
-    /// part does not narrow its normals, and a line lying in it is a coincidence, which
-    /// the leaf's own solve takes. A leaf whose surface cannot bound a part on its own
+    /// dropped; each part kept carries the line interval its box allows. A part whose
+    /// normals cannot be bounded is kept with `once` false, as is one whose normals lie
+    /// within the angular tolerance ([`ANG_TOL_RAD`]): halving a flat part does not
+    /// narrow its normals, and a line lying in it is a coincidence, which the leaf's own
+    /// solve takes. A leaf whose surface cannot bound a part on its own
     /// ([`SurfaceCache::boxes_over`] is `None`) is one part, solved as upstream solves it.
     /// An explicit stack, at most [`MAX_PART_DEPTH`] deep and [`MAX_PARTS`] parts, that
     /// polls cancellation once per part.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unsupported`] when a part the line may still cross twice is left
+    /// after [`MAX_PART_DEPTH`] halvings or when the parts reach [`MAX_PARTS`]: kept, it
+    /// could miss a crossing unseen; cancellation; those of the bounds and the halving.
     fn parts_crossed_once(
         &self,
         k: &Kernel,
@@ -730,12 +736,25 @@ impl<'t, 's, O: SolutionObject + 't> LsiGlobalSolver<'t, 's, O> {
             // coincidence, which the leaf's own solve takes.
             let once = polar.is_some_and(|b| !b.has_perpendicular_to_vector(line_vec));
             let flat = polar.is_some_and(|b| normal_spread(&b) <= ANG_TOL_RAD);
-            if once
-                || flat
-                || polar.is_none()
-                || depth >= MAX_PART_DEPTH
-                || parts.len() + stack.len() + 2 > MAX_PARTS
-            {
+            // a part the line may still cross twice at either limit is not kept: its solve
+            // could miss a crossing unseen
+            if !once && !flat && polar.is_some() {
+                if depth >= MAX_PART_DEPTH {
+                    return Err(SolidError::Unsupported {
+                        operation: OP_LSI,
+                        reason:
+                            "a part of a ray's leaf may still be crossed twice after the most halvings",
+                    });
+                }
+                if parts.len() + stack.len() + 2 > MAX_PARTS {
+                    return Err(SolidError::Unsupported {
+                        operation: OP_LSI,
+                        reason:
+                            "a ray's leaf has the most parts and one may still be crossed twice",
+                    });
+                }
+            }
+            if once || flat || polar.is_none() {
                 parts.push(LeafPart {
                     domain,
                     interval,
@@ -2024,5 +2043,68 @@ mod tests {
             assert_eq!(typed.is_status_answer(), before.is_status_answer());
             assert_eq!(typed.surface_failure(), Some(&failure));
         }
+    }
+
+    /// `(u, v, c u^2)` over `u` in `[a, b]`, `v` in `[0, 1]`: one quadratic span in `u`.
+    fn parabola(c: f64, a: f64, b: f64) -> Surface {
+        let column =
+            |x: f64, z: f64| vec![CPoint::new(x, 0.0, z, NOW), CPoint::new(x, 1.0, z, NOW)];
+        let net = vec![
+            column(a, c * a * a),
+            column(0.5 * (a + b), c * a * b),
+            column(b, c * b * b),
+        ];
+        let n = crate::nurbs::srf_basic::Surface::new(
+            net,
+            2,
+            1,
+            vec![a, a, a, b, b, b],
+            vec![0.0, 0.0, 1.0, 1.0],
+        )
+        .unwrap();
+        Surface::from(BSplineSurface::from_nurb(n, false))
+    }
+
+    /// A ray touching the crest of `(u, v, c u^2)` over `u` in `[-0.1, 0.13]`, its
+    /// curvature radius `1 / 2c` (5e-9) far below the leaf's size: the part round the
+    /// touch keeps a normal perpendicular to the ray through every halving, so the solve
+    /// refuses at the halving limit rather than keep a part it may cross twice. A ray
+    /// 1e-3 above the crest crosses it twice, 6e-6 apart, and keeps the first.
+    #[test]
+    fn ray_touching_a_sharp_crest_refuses_at_the_halving_limit() {
+        let k = Kernel::default();
+        let c = 1e8;
+        let s = parabola(c, -0.1, 0.13);
+        let dom = Extent2d::from_bounds(-0.1, 0.0, 0.13, 1.0);
+        let fire = |z: f64| {
+            s.global_line_intersect::<H>(
+                &k,
+                H(0),
+                &dom,
+                Point3::new(-0.05, 0.5, z),
+                Vec3::new(1.0, 0.0, 0.0),
+                None,
+                true,
+                1e-6,
+            )
+        };
+        match fire(0.0) {
+            Err(SolidError::Unsupported { operation, reason }) => {
+                assert_eq!(operation, OP_LSI);
+                assert!(reason.contains("most halvings"), "{reason}");
+            }
+            other => panic!("{other:?}, want the halving limit's refusal"),
+        }
+        let above = fire(1e-3).unwrap();
+        let ts: Vec<f64> = above
+            .as_slice()
+            .iter()
+            .map(|sol| sol.start.parameters[0])
+            .collect();
+        let first = 0.05 - (1e-3 / c).sqrt();
+        assert!(
+            ts.len() == 1 && (ts[0] - first).abs() <= 1e-9,
+            "{ts:?}, want [{first}]"
+        );
     }
 }
