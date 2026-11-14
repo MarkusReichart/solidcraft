@@ -25,7 +25,8 @@
 //! when the file has none, never below [`MIN_TOLERANCE`]) is the brep's tolerance and every
 //! vertex's and edge's to start with. A vertex measurably off its curve or surface, or an edge
 //! whose curve lies measurably off a face's surface, gets that distance (with margin) as its
-//! tolerance, and the solid's notes say how many and how far.
+//! tolerance, and the solid's notes say how many and how far. A void within the distance
+//! uncertainty (every point of it that close to every other) is a point and is left out.
 //!
 //! Pcurves are the closed forms the 3D edges have on our surfaces ([`pcurve::exact_pcurves`]); a
 //! use with none gets its pcurve from the kernel ([`read_solids_with`], SMLib's own trims). The
@@ -1216,6 +1217,15 @@ impl<'b, 'a> Builder<'b, 'a> {
     /// Pcurves, outer loops, domains and the canonical order: the finished record.
     fn finish(mut self, item: u64, name: String, shells: Vec<Vec<(u32, bool)>>, kind: Kind) -> R<Solid> {
         let mut notes = Vec::new();
+        let shells = if matches!(kind, Kind::Voids | Kind::Open { voids: true }) {
+            let (kept, dropped) = self.drop_point_voids(shells)?;
+            if dropped > 0 {
+                notes.push(format!("{dropped} voids within the file's distance accuracy ({} mm) left out: each is a point at it", self.tol));
+            }
+            kept
+        } else {
+            shells
+        };
         // A face bounded by a slit alone is the whole of its closed surface, closed by its seams
         // (a sphere's frame put on the slit), before anything is measured on the frame or split
         // at its poles.
@@ -1570,6 +1580,83 @@ impl<'b, 'a> Builder<'b, 'a> {
         solidcore_ops::record_check::validate(&brep).map_err(|e| format!("the record is invalid: {e}"))?;
         solidcore_ops::record_check::agreement(&brep).map_err(|e| format!("the record's geometry disagrees: {e}"))?;
         Ok(Solid { item, name, product: None, brep, face_origin, sheet, notes, turned: turned_faces })
+    }
+
+    /// The solid's voids (its shells after the first) that lie within the file's distance
+    /// accuracy, left out with their faces, and how many. Every point of such a void is within
+    /// that accuracy of every other: it is one point and encloses nothing. Kept, each of its edges
+    /// is shorter than its tolerance, and a boolean through it fails stepping off its faces.
+    fn drop_point_voids(&mut self, shells: Vec<Vec<(u32, bool)>>) -> R<(Vec<Vec<(u32, bool)>>, usize)> {
+        let mut kept = Vec::with_capacity(shells.len());
+        let mut dropped = Vec::new();
+        for (k, s) in shells.into_iter().enumerate() {
+            if k > 0 && self.within_accuracy(&s)? {
+                dropped.push(s);
+            } else {
+                kept.push(s);
+            }
+        }
+        if dropped.is_empty() {
+            return Ok((kept, 0));
+        }
+        // A face goes with a dropped void unless a kept shell uses it too.
+        let mut gone = vec![false; self.faces.len()];
+        for &(f, _) in dropped.iter().flatten() {
+            *gone.get_mut(f as usize).ok_or("face reference")? = true;
+        }
+        for &(f, _) in kept.iter().flatten() {
+            *gone.get_mut(f as usize).ok_or("face reference")? = false;
+        }
+        let mut renumbered = vec![u32::MAX; self.faces.len()];
+        let mut next = 0;
+        for (slot, g) in renumbered.iter_mut().zip(&gone) {
+            if !g {
+                *slot = index(next)?;
+                next += 1;
+            }
+        }
+        let mut f = 0;
+        self.faces.retain(|_| {
+            f += 1;
+            !gone.get(f - 1).copied().unwrap_or(false)
+        });
+        for (face, _) in kept.iter_mut().flatten() {
+            *face = *renumbered.get(*face as usize).ok_or("face reference")?;
+        }
+        Ok((kept, dropped.len()))
+    }
+
+    /// Every point of the shell lies within the file's distance accuracy of every other: its
+    /// faces are planes bounded by lines, so it lies in the box of its edges' ends, and that box's
+    /// diagonal is within the accuracy. A curved shell is not measured (its box needs its
+    /// surfaces' bounds) and counts as larger.
+    fn within_accuracy(&self, shell: &[(u32, bool)]) -> R<bool> {
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for &(f, _) in shell {
+            let face = self.faces.get(f as usize).ok_or("face reference")?;
+            if !matches!(face.surface, BSurface::Plane { .. } | BSurface::PlaneThrough { .. }) {
+                return Ok(false);
+            }
+            for l in &face.loops {
+                let LoopB::Edges(es) = l else { return Ok(false) };
+                for &(e, _) in es {
+                    let edge = self.edges.get(e as usize).ok_or("edge reference")?;
+                    if !matches!(edge.curve, BCurve::Line { .. }) {
+                        return Ok(false);
+                    }
+                    let c = CurveEval::new(&edge.curve).map_err(|m| m.to_string())?;
+                    for t in edge.interval {
+                        let p = c.point(t).ok_or("edge point")?;
+                        for ((l, h), x) in lo.iter_mut().zip(hi.iter_mut()).zip([p.x, p.y, p.z]) {
+                            *l = l.min(x);
+                            *h = h.max(x);
+                        }
+                    }
+                }
+            }
+        }
+        let diagonal = lo.iter().zip(&hi).map(|(l, h)| (h - l) * (h - l)).sum::<f64>().sqrt();
+        Ok(diagonal <= self.tol)
     }
 
     /// Every edge of the shell's faces used at least twice among them.
