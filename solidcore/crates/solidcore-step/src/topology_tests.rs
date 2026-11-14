@@ -1123,6 +1123,38 @@ fn a_solid_with_a_void() {
     }
 }
 
+/// A solid with a void and a second void smaller than the file's distance accuracy (1e-5 in),
+/// as some exporters write dozens into a part (0.1 µm by 0.1 µm by 0.03 µm,
+/// tangency-labs/solidcraft#15895): the small one is a point at that accuracy and is left out
+/// with its faces, with a note. Kept, every edge of it was shorter than its tolerance, and a cut
+/// through it failed stepping off its faces.
+#[test]
+fn a_void_within_the_distance_accuracy_is_left_out() {
+    let mut w = W::default();
+    let outer = box_faces(&mut w, [0.0; 3], [10.0; 3], BoxStyle::default(), &mut |_, _| Vec::new());
+    let outer = closed_shell(&mut w, &outer);
+    let flip = BoxStyle { flip_faces: true, ..Default::default() };
+    let inner = box_faces(&mut w, [4.0; 3], [6.0; 3], flip, &mut |_, _| Vec::new());
+    let inner = closed_shell(&mut w, &inner);
+    let void = w.add(format!("ORIENTED_CLOSED_SHELL('',*,#{inner},.F.)"));
+    let point = box_faces(&mut w, [8.0; 3], [8.000_105, 8.000_105, 8.000_03], flip, &mut |_, _| Vec::new());
+    let point = closed_shell(&mut w, &point);
+    let point_void = w.add(format!("ORIENTED_CLOSED_SHELL('',*,#{point},.F.)"));
+    let solid = w.add(format!("BREP_WITH_VOIDS('',#{outer},(#{void},#{point_void}))"));
+    let s = one_solid(&w.file_with_uncertainty(&[solid], 2.54e-4));
+    assert_eq!(counts(&s.brep), [3, 2, 12, 24, 16]);
+    assert_eq!(s.brep.regions[0], Region { shells: vec![0], void: false });
+    assert_eq!(s.brep.regions[1], Region { shells: vec![0, 1], void: false });
+    assert_eq!(s.brep.regions[2], Region { shells: vec![1], void: true });
+    // the kept void is the 2 mm one
+    for (shell, p, _) in sides(&s.brep) {
+        if shell == 1 {
+            assert!(p.iter().all(|x| (4.0 - 1e-9..=6.0 + 1e-9).contains(x)), "{p:?}");
+        }
+    }
+    assert_eq!(s.notes.iter().filter(|n| n.starts_with("1 voids within the file's distance accuracy")).count(), 1, "{:?}", s.notes);
+}
+
 /// A unit square sheet on z = 0 whose edge from (1, 0) to (1, 1) is a B-spline (quadratic, its
 /// middle point off centre so its parameter is not proportional to length), written along or
 /// against its curve.
