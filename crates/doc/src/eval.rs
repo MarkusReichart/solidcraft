@@ -10447,6 +10447,21 @@ fn eval_feature(
                 let Some(name) = name else { continue };
                 let carried = f.link_faces.get(k).map_or(&[][..], Vec::as_slice);
                 let b = crate::lineage::linked_tool(b.body.clone().with_import_certificate(&digest, f.id)?, f.id, carried);
+                for record in f.link_threads.get(k).into_iter().flatten() {
+                    if !record.axis_point.is_finite()
+                        || !record.start.is_finite()
+                        || !record.end.is_finite()
+                        || record.end <= record.start
+                        || !(1..=8).contains(&record.starts)
+                        || [record.major_diameter, record.radius, record.pitch].iter().any(|v| !v.is_finite() || *v <= 0.0)
+                    {
+                        return Err(DocError::Invalid("invalid cosmetic thread record in linked body".into()));
+                    }
+                    let mut thread = record.clone();
+                    thread.feature = f.id;
+                    thread.body.clone_from(&name);
+                    st.threads.push(thread);
+                }
                 st.bodies.push(ModelBody::traced_new(name, b, f.id));
             }
             if !imp.warnings.is_empty() {
