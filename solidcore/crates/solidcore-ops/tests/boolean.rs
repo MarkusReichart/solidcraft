@@ -5,6 +5,7 @@ use std::f64::consts::{PI, TAU};
 use std::io::Read as _;
 
 use serde_json::Value;
+use solidcore::error::SM_ERR;
 use solidcore_ops::boolean::{boolean, imprint, union_all};
 use solidcore_ops::sweep::{extrude, revolve, Curve, DraftCorner};
 use solidcore_ops::{
@@ -1511,4 +1512,23 @@ fn a_traced_cut_meeting_an_earlier_cut_removes_its_tool() {
         .unwrap()
         .unwrap();
     one_valid_solid_of_volume(&r, [46, 132, 88], want, 1e-9);
+}
+
+/// #15700's cut as SolidCraft passed it: a lofted cavity less a nose piece whose flat top
+/// crosses the cavity's nose end, where the cavity's surface folds over itself (its strips 2
+/// and 4 both pass through (3.9604, 16.9137, -1.0292)). The tool's top meets the two strips in
+/// curves that cross there, at a point no vertex of the cavity can hold, so the imprint dropped
+/// those pieces and the intersection had a gap on each side of the nose. Classified across the
+/// gaps, the cut came back empty (SolidCraft deleted the cavity) and the intersection as the
+/// whole cavity. Both are refused.
+#[test]
+fn a_boolean_whose_imprint_drops_an_intersection_edge_is_refused() {
+    all_fixes();
+    let body = traced_operands("issue_15700_cut_across_folded_cavity");
+    assert_eq!(body("target").counts().unwrap(), [105, 264, 161]);
+    assert_eq!(body("tool").counts().unwrap(), [28, 78, 52]);
+    for op in [BooleanOp::Subtract, BooleanOp::Intersect] {
+        let r = boolean(body("target"), body("tool"), op);
+        assert_eq!(r.err(), Some(Error::Status(SM_ERR)), "{op:?}");
+    }
 }
