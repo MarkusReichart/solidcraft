@@ -1251,7 +1251,7 @@ impl Lit {
         *self.from_view.get_or_insert_with(|| {
             #[cfg(test)]
             FROM_VIEW_WORKED_OUT.with(|n| n.set(n.get() + 1));
-            [crate::timeline::hovered_feature(app), crate::timeline::picked_feature(app)]
+            [crate::timeline::hovered_feature(app).or(app.viewport.hover_feature), crate::timeline::picked_feature(app)]
         })
     }
 
@@ -1303,7 +1303,15 @@ impl Lit {
             Some(Hit::Plane { name, .. }) => Some(Thing::Plane(name.clone())),
             Some(Hit::Axis { name }) => Some(Thing::Axis(name.clone())),
             Some(Hit::ConstructionPoint { name }) => Some(Thing::Point(name.clone())),
-            None => None,
+            None => app.viewport.hover_feature.and_then(|id| {
+                app.session.doc.feature(id).and_then(|f| match &f.kind {
+                    FeatureKind::Sketch { .. } => Some(Thing::Sketch(id)),
+                    FeatureKind::ConstructionPlane { .. } => Some(Thing::Plane(f.name.clone())),
+                    FeatureKind::ConstructionAxis { .. } => Some(Thing::Axis(f.name.clone())),
+                    FeatureKind::ConstructionPoint { .. } => Some(Thing::Point(f.name.clone())),
+                    _ => None,
+                })
+            }),
         };
         // Unless the Browser follows the 3D view, a body's placement is not looked up for the rows
         // above it (that names every placement again after each edit): only the one Find in
