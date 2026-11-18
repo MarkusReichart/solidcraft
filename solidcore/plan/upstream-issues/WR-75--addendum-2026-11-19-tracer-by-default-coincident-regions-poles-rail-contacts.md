@@ -31,12 +31,18 @@ for a case where the pass returned a wrong result.
   point where either surface's partials, as evaluated, do not span the tangent plane.
 - **A contact on one curve is not a node** (`find_tangent_curves`). A contact point with no
   tangential direction and two or more crossing directions was reported as a node, a touching
-  point where crossing branches meet. Where a round touches its support face only to within
-  the tolerance, along its rail, the normals there are not parallel to the tracer's `1e-8`, so
-  no tangential direction is found, while the two crossing directions along the rail are. The
-  round of edge 8 of upstream's `Fillet/bottle.smb` at r 0.1 got 16 and 11 touching points on
-  two rails and failed with status 1001. Now a node needs crossing directions on more than one
-  line through it.
+  point where crossing branches meet. The round of edge 8 of upstream's `Fillet/bottle.smb` at
+  r 0.1 got 16 and 11 such touching points in two intersections of a round with its support
+  face, and failed with status 1001. All of them lie on the rail, on the edge of the round's
+  domain where it touches the face, and the marcher already returns that rail as tangent
+  curves; without the touching points the round builds the body it built with the flag off.
+  Now a node needs crossing directions on more than one line through it.
+- **Limits:** the three tests judge from the probe's 24 sampled directions, not from a
+  certificate. A coincident region whose corner at the seed is narrower than 45 degrees in the
+  tangent plane is still taken for curves. Two branches crossing at less than 30 degrees fall in
+  one direction cluster and are not reported as a node. A node at a pole gets no directions, so
+  no branch is traced on through it. Nodes the march finds at a minimum of the crossing angle
+  are not tested for one line.
 - **Tests:** goldens `surface_surface_p2::tests::coincident_surfaces_get_no_tangent_curve_from_the_tracer`
   and `a_pole_of_two_coincident_spheres_starts_no_tangent_curve` (the curve types as without the
   tracer), `blend_fillet_executive_p3::end_to_end::wr75_rail_contacts` (the bottle's round is a

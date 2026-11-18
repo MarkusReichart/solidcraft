@@ -543,9 +543,9 @@ fn issue_395_tracer_covers_every_contact_curve() {
 }
 
 /// The closed tangent circle of the quartic and the 3rd and 4th order tangent lines, which
-/// the marcher alone misses or collapses to their two end points (upstream does the same,
-/// as in the goldens' `tc_quartic_plane_circle`, `tc_cubic_plane_line` and
-/// `tc_quartic_ridge_plane_line`), are each traced as one `Tangent` curve.
+/// the marcher alone misses or collapses to their two end points (as upstream does), are
+/// each traced as one `Tangent` curve; the goldens' `tc_quartic_plane_circle`,
+/// `tc_cubic_plane_line` and `tc_quartic_ridge_plane_line` hold that result.
 #[test]
 fn issue_395_high_order_contact_is_one_tangent_curve() {
     for swapped in [false, true] {

@@ -292,8 +292,7 @@ What came of it, from #17's thread:
   SolidCraft's earlier kernel completed the cases reported in the literature.
 - Step 3's policy has since been replaced: fixes change the default result, with no compatibility
   flag, and the existing `UpstreamFixes` flags are to be retired (AGENTS.md §4b, 2026-11-04). The
-  WR-80 fix is the default; the WR-74 to WR-79 fixes still sit behind flags (§4.4), which is
-  open work.
+  WR-80 fix and the fork's fixes in §4.4's table run by default.
 
 ## 4. The pipeline
 
@@ -701,7 +700,7 @@ boolean's side.
 | [#17](https://github.com/tangency-labs/solidcore/issues/17) | the corpus and the measured gaps of the upstream intersector |
 | [#391](https://github.com/tangency-labs/solidcore/issues/391) | an empty trace reversed (`SM_ERR_NULL_POINTER`); fixed on the default path |
 | [#393](https://github.com/tangency-labs/solidcore/issues/393) | curves not split at singular crossing points; fix behind a flag |
-| [#395](https://github.com/tangency-labs/solidcore/issues/395) | tangent and high-order contact curves missed or collapsed; fix behind a flag |
+| [#395](https://github.com/tangency-labs/solidcore/issues/395) | tangent and high-order contact curves missed or collapsed; fixed on the default path |
 | [#1552](https://github.com/tangency-labs/solidcore/issues/1552) | how `solidcore-ssi` is wired into the kernel |
 | [#2479](https://github.com/tangency-labs/solidcore/issues/2479) | pcurves end one ulp past their face's domain |
 | [#2537](https://github.com/tangency-labs/solidcore/issues/2537) | a tilted cylinder whose cap is bisected by a box face is refused (#36) |
