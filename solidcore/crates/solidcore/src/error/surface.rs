@@ -84,6 +84,9 @@ pub enum SurfaceFailure {
     /// The NURB tested as a plane has parallel u and v directions at its origin, so it has
     /// no plane frame (the unitize's error is the cause). Class `failed`.
     NurbAxesParallel,
+    /// The surface given has no NURB form, which the routine reads.
+    /// [`ErrorKind::InvalidInput`].
+    NoNurb,
     /// The surface's NURB form could not be made (the make's failure is the cause, where it
     /// gave one). Class `failed`; whether it is a defect or a refusal is its cause's
     /// ([`crate::SolidError::is_defect`] follows the chain).
@@ -112,6 +115,75 @@ pub enum SurfaceFailure {
     /// made or read, or both sweep iso curves were degenerate when it was, which the make
     /// does not report). Class `failed`.
     NoPolarConverter,
+    /// The surface is not a cylinder with a radius above the kernel's zero, which the
+    /// routine takes. [`ErrorKind::Unsupported`].
+    NotACylinder,
+    /// The cone the routine would build passes its apex within the surface's span: its
+    /// radius at a control point of the net is not above the kernel's zero. Class `failed`.
+    ConeClosesWithinSpan,
+    /// The NURB is not of the analytic kind the routine tests it for or rebuilds from it
+    /// (an edited NURB that is no longer its surface's kind, or a NURB recognised as one):
+    /// `check` says which test it failed. [`ErrorKind::Unsupported`].
+    NurbNotAnalytic {
+        /// The test of the analytic kind the NURB failed.
+        check: AnalyticCheck,
+    },
+    /// The point given, moved onto the plane of the generator (along the extrusion, or
+    /// about the axis), meets no point of the generator curve: the inversion's search
+    /// found none, so the point is not on the surface. Class `failed`.
+    PointNotOnGenerator,
+    /// The extrusion is not perpendicular to its generator's plane, which the routine's
+    /// closed form needs. [`ErrorKind::Unsupported`].
+    GeneratorNotPerpendicular,
+    /// The line through the point along the extrusion crosses the generator nowhere, so no
+    /// directrix runs through the point. Class `failed`.
+    DirectrixNotFound,
+}
+
+/// The test of an analytic kind a NURB failed ([`SurfaceFailure::NurbNotAnalytic`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AnalyticCheck {
+    /// Its degrees and rationality are not the kind's (a cone's are 1 by 2, rational).
+    DegreeAndRationality,
+    /// Its iso curves at the two ends are not circular arcs.
+    EndsNotCircular,
+    /// Its end arcs' start or end angles differ by more than the tolerance.
+    EndArcsTwisted,
+    /// The distance between its end arcs' centres is degenerate.
+    HeightDegenerate,
+    /// The plane of its bottom arc is not perpendicular to the axis.
+    BottomNotSquareToAxis,
+    /// The plane of its top arc is not perpendicular to the axis.
+    TopNotSquareToAxis,
+    /// It is a cylinder's, and its end radii differ by more than the cylinder's tolerance.
+    RadiiDiffer,
+    /// Moved onto the mean-radius cylinder, its net would have a radius not above zero at
+    /// a control point.
+    NetRadiusNotPositive,
+    /// Moved onto the mean-radius cylinder, its net is not on that cylinder (its end
+    /// circles are turned against each other or off the axis).
+    NetOffCylinder,
+}
+
+impl core::fmt::Display for AnalyticCheck {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::DegreeAndRationality => "its degrees or rationality are not the kind's",
+            Self::EndsNotCircular => "its end iso curves are not circular",
+            Self::EndArcsTwisted => "its end arcs' angles differ by more than the tolerance",
+            Self::HeightDegenerate => "its height is degenerate",
+            Self::BottomNotSquareToAxis => {
+                "its bottom arc's plane is not perpendicular to the axis"
+            }
+            Self::TopNotSquareToAxis => "its top arc's plane is not perpendicular to the axis",
+            Self::RadiiDiffer => "its top and bottom radii differ",
+            Self::NetRadiusNotPositive => {
+                "its net has no positive radius at a control point on the mean-radius cylinder"
+            }
+            Self::NetOffCylinder => "its moved net is not on the mean-radius cylinder",
+        })
+    }
 }
 
 impl SurfaceFailure {
@@ -128,10 +200,17 @@ impl SurfaceFailure {
             | Self::NurbNotMade
             | Self::NurbEvaluationFailed
             | Self::RadiusNotPositive
-            | Self::DerivativeOrderTooHigh { .. } => SM_ERR,
-            Self::Missing(_) | Self::SurfaceWithoutGenerator | Self::NoPolarConverter => {
-                SM_ERR_NULL_POINTER
-            }
+            | Self::DerivativeOrderTooHigh { .. }
+            | Self::NotACylinder
+            | Self::ConeClosesWithinSpan
+            | Self::NurbNotAnalytic { .. }
+            | Self::PointNotOnGenerator
+            | Self::GeneratorNotPerpendicular
+            | Self::DirectrixNotFound => SM_ERR,
+            Self::Missing(_)
+            | Self::NoNurb
+            | Self::SurfaceWithoutGenerator
+            | Self::NoPolarConverter => SM_ERR_NULL_POINTER,
             Self::InvalidValue(_)
             | Self::ZeroLineDirection
             | Self::DomainPastApex
@@ -156,11 +235,15 @@ impl SurfaceFailure {
             | Self::ZeroLineDirection
             | Self::ScaleNotUniform
             | Self::TrimDomainOutside
+            | Self::NoNurb
             | Self::RadiusNotPositive
             | Self::SurfaceWithoutGenerator
             | Self::DomainPastApex
             | Self::DerivativeOrderTooHigh { .. }
             | Self::DegenerateIsoCurve => ErrorKind::InvalidInput,
+            Self::NotACylinder | Self::NurbNotAnalytic { .. } | Self::GeneratorNotPerpendicular => {
+                ErrorKind::Unsupported
+            }
             Self::NurbNotMade | Self::NurbEvaluationFailed | Self::NoPolarConverter => {
                 ErrorKind::Failed
             }
@@ -195,6 +278,7 @@ impl core::fmt::Display for SurfaceFailure {
             Self::NurbAxesParallel => {
                 f.write_str("the NURB's u and v directions are parallel at its origin")
             }
+            Self::NoNurb => f.write_str("the surface has no NURB form"),
             Self::NurbNotMade => f.write_str("the surface's NURB form could not be made"),
             Self::NurbEvaluationFailed => {
                 f.write_str("the evaluation of the surface's NURB form failed")
@@ -208,6 +292,22 @@ impl core::fmt::Display for SurfaceFailure {
             Self::DegenerateIsoCurve => f.write_str("the iso curve has zero length"),
             Self::NoPolarConverter => {
                 f.write_str("the surface of revolution has no polar converter circle")
+            }
+            Self::NotACylinder => {
+                f.write_str("the surface is not a cylinder with a positive radius")
+            }
+            Self::ConeClosesWithinSpan => {
+                f.write_str("the cone would pass its apex within the surface's span")
+            }
+            Self::NurbNotAnalytic { check } => {
+                write!(f, "the NURB is not of the analytic kind: {check}")
+            }
+            Self::PointNotOnGenerator => f.write_str("the point is not on the generator curve"),
+            Self::GeneratorNotPerpendicular => {
+                f.write_str("the extrusion is not perpendicular to its generator")
+            }
+            Self::DirectrixNotFound => {
+                f.write_str("no directrix of the extrusion runs through the point")
             }
         }
     }
@@ -457,6 +557,11 @@ mod tests {
                 ErrorKind::InvalidInput,
             ),
             (SurfaceFailure::NurbAxesParallel, SM_ERR, ErrorKind::Failed),
+            (
+                SurfaceFailure::NoNurb,
+                SM_ERR_NULL_POINTER,
+                ErrorKind::InvalidInput,
+            ),
             (SurfaceFailure::NurbNotMade, SM_ERR, ErrorKind::Failed),
             (
                 SurfaceFailure::NurbEvaluationFailed,
@@ -493,6 +598,30 @@ mod tests {
                 SM_ERR_NULL_POINTER,
                 ErrorKind::Failed,
             ),
+            (SurfaceFailure::NotACylinder, SM_ERR, ErrorKind::Unsupported),
+            (
+                SurfaceFailure::ConeClosesWithinSpan,
+                SM_ERR,
+                ErrorKind::Failed,
+            ),
+            (
+                SurfaceFailure::NurbNotAnalytic {
+                    check: AnalyticCheck::EndArcsTwisted,
+                },
+                SM_ERR,
+                ErrorKind::Unsupported,
+            ),
+            (
+                SurfaceFailure::PointNotOnGenerator,
+                SM_ERR,
+                ErrorKind::Failed,
+            ),
+            (
+                SurfaceFailure::GeneratorNotPerpendicular,
+                SM_ERR,
+                ErrorKind::Unsupported,
+            ),
+            (SurfaceFailure::DirectrixNotFound, SM_ERR, ErrorKind::Failed),
         ];
         for (failure, status, kind) in cases {
             let e = SolidError::surface(op, failure);
@@ -507,6 +636,16 @@ mod tests {
             assert_eq!(e.surface_failure(), Some(&failure));
             assert!(!e.is_defect() && !e.is_refusal(), "{failure:?}");
         }
+        assert_eq!(
+            SolidError::surface(
+                op,
+                SurfaceFailure::NurbNotAnalytic {
+                    check: AnalyticCheck::HeightDegenerate
+                }
+            )
+            .to_string(),
+            "surface::op: the NURB is not of the analytic kind: its height is degenerate"
+        );
         // a NURB not made keeps the site's status, and its make's defect decides the class
         let made = Err(SolidError::surface(op, SurfaceFailure::Defect { why: "x" }));
         let e = SolidError::surface_nurb_not_made(op, SM_ERR_NULL_POINTER, made);
@@ -578,7 +717,6 @@ mod tests {
             ("solidcore/src/surface/b_spline_volume_n_lib.rs", 1),
             ("solidcore/src/surface/ball_patch.rs", 8),
             ("solidcore/src/surface/bend_volume.rs", 2),
-            ("solidcore/src/surface/cone/p2.rs", 14),
             ("solidcore/src/surface/cone/p3.rs", 3),
             ("solidcore/src/surface/extend.rs", 2),
             ("solidcore/src/surface/extend/analytic.rs", 25),
@@ -594,8 +732,6 @@ mod tests {
             ("solidcore/src/surface/side.rs", 7),
             ("solidcore/src/surface/sphere.rs", 16),
             ("solidcore/src/surface/srf_in_volume.rs", 4),
-            ("solidcore/src/surface/surf_of_extrusion/p1.rs", 16),
-            ("solidcore/src/surface/surf_of_extrusion/p2.rs", 13),
             ("solidcore/src/surface/surf_of_revolution/p1.rs", 10),
             ("solidcore/src/surface/surf_of_revolution/p2.rs", 6),
             ("solidcore/src/surface/surf_of_revolution/p3.rs", 21),
