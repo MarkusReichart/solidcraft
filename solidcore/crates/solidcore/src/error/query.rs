@@ -16,8 +16,10 @@
 //! | the named causes, from [`QueryFailure::BoundOverflows`] on | the status of the phrase each replaced (`comparison_status`), or the site's through `with_status` |
 //!
 //! [`QueryFailure::Defect`] is a failure reviewed at its site as the kernel's fault, with its
-//! reason: a defect ([`ErrorKind::StageFailed`], class 127). The phrase causes are sites
-//! not yet converted (the conversion guide: `docs/failure-codes-and-reproduction.md` §6).
+//! reason: a defect ([`ErrorKind::StageFailed`], class 127). The phrase causes
+//! ([`QueryFailure::Failed`], [`QueryFailure::Missing`], [`QueryFailure::InvalidValue`]) are
+//! no longer built by the query routines; the ratchet below keeps it so (the conversion
+//! guide: `docs/failure-codes-and-reproduction.md` §6).
 //!
 //! Deviations: not upstream. A failure names what went wrong (a named cause, or a phrase
 //! where a site is not yet converted); the failure's `operation` path says which routine.
@@ -162,6 +164,24 @@ pub enum QueryFailure {
     /// The scale given is undefined. Upstream returns `SM_ERR_INVALID_INPUT` as a status
     /// here. [`ErrorKind::InvalidInput`].
     UndefinedScale,
+    /// No loop of the face classifies the point (a loop that crosses the face's seam does
+    /// not). The failure is at the face. Class `failed`.
+    NoLoopClassifies,
+    /// A face of the caller's body has no upward face use. [`ErrorKind::InvalidInput`].
+    FaceWithoutFaceuse,
+    /// A loop use of the caller's body lists a vertex use slot that holds none.
+    /// [`ErrorKind::InvalidInput`].
+    LoopuseWithoutVertexuse,
+    /// A vertex use of the caller's body has no vertex. [`ErrorKind::InvalidInput`].
+    VertexuseWithoutVertex,
+    /// The classification curve's intersection with the face's trim boundary failed (its
+    /// error is the cause). Class `failed`; whether it is a defect or a refusal is its
+    /// cause's ([`crate::SolidError::is_defect`] follows the chain).
+    BoundaryNotIntersected,
+    /// The face's surface cache is not a trimmed one: its trim curves could not be cached (the
+    /// trimmed build's error is not kept by the cache lease, so there is no cause to chain).
+    /// Status `SM_ERR_NULL_POINTER`, class `missing`.
+    NoTrimmedCache,
 }
 
 impl QueryFailure {
@@ -197,7 +217,9 @@ impl QueryFailure {
             | Self::PolyEdgeNotContinuing
             | Self::PolyLoopEmpty
             | Self::PolyLoopNotClosed
-            | Self::PolyEdgeNotAtVertex => SM_ERR,
+            | Self::PolyEdgeNotAtVertex
+            | Self::NoLoopClassifies
+            | Self::BoundaryNotIntersected => SM_ERR,
             Self::Missing(_)
             | Self::FaceWithoutSurface
             | Self::EdgeWithoutCurve
@@ -207,7 +229,11 @@ impl QueryFailure {
             | Self::NoTessDriver
             | Self::PolyBrepWithoutFace
             | Self::PolyEdgeWithoutVertex
-            | Self::PolyEdgeOutsideLoop => SM_ERR_NULL_POINTER,
+            | Self::PolyEdgeOutsideLoop
+            | Self::FaceWithoutFaceuse
+            | Self::LoopuseWithoutVertexuse
+            | Self::VertexuseWithoutVertex
+            | Self::NoTrimmedCache => SM_ERR_NULL_POINTER,
             Self::InvalidValue(_) | Self::ZeroLengthVector | Self::UndefinedScale => {
                 SM_ERR_INVALID_INPUT
             }
@@ -242,7 +268,11 @@ impl QueryFailure {
             | Self::PolyEdgeWithoutVertex
             | Self::PolyEdgeNotAtVertex
             | Self::PolyEdgeOutsideLoop
-            | Self::UndefinedScale => ErrorKind::InvalidInput,
+            | Self::UndefinedScale
+            | Self::FaceWithoutFaceuse
+            | Self::LoopuseWithoutVertexuse
+            | Self::VertexuseWithoutVertex => ErrorKind::InvalidInput,
+            Self::BoundaryNotIntersected => ErrorKind::Failed,
             _ => ErrorKind::of_status(self.comparison_status()),
         }
     }
@@ -307,6 +337,16 @@ impl core::fmt::Display for QueryFailure {
             Self::PolyEdgeNotAtVertex => f.write_str("the poly edge does not start at the vertex"),
             Self::PolyEdgeOutsideLoop => f.write_str("the poly edge is in no loop"),
             Self::UndefinedScale => f.write_str("the scale is undefined"),
+            Self::NoLoopClassifies => {
+                f.write_str("the point is in no loop of the face (a loop crosses its seam)")
+            }
+            Self::FaceWithoutFaceuse => f.write_str("the face has no upward face use"),
+            Self::LoopuseWithoutVertexuse => f.write_str("a loop use's vertex use is missing"),
+            Self::VertexuseWithoutVertex => f.write_str("a vertex use has no vertex"),
+            Self::BoundaryNotIntersected => f.write_str(
+                "the classification curve's intersection with the face's boundary failed",
+            ),
+            Self::NoTrimmedCache => f.write_str("the face's surface cache has no trim curves"),
         }
     }
 }
@@ -316,21 +356,6 @@ impl crate::SolidError {
     #[must_use]
     pub(crate) fn query(operation: &'static str, failure: QueryFailure) -> Self {
         Failure::new(operation, failure).into_error()
-    }
-
-    /// [`crate::SolidError::Failed`] for a query that could not continue, as the phrase
-    /// says, with status [`SM_ERR`] (upstream `return SE(SM_ERR)`).
-    #[must_use]
-    pub(crate) fn query_failed(operation: &'static str, what: &'static str) -> Self {
-        Self::query(operation, QueryFailure::Failed(what))
-    }
-
-    /// [`crate::SolidError::Failed`] for something a query needs that is not there, as the
-    /// phrase says, with status [`SM_ERR_NULL_POINTER`] (upstream `NER(ptr)` on a `NULL`
-    /// pointer).
-    #[must_use]
-    pub(crate) fn query_missing(operation: &'static str, what: &'static str) -> Self {
-        Self::query(operation, QueryFailure::Missing(what))
     }
 
     /// The query failure behind this error, for a [`crate::SolidError::Failed`] with a
@@ -381,11 +406,12 @@ pub(super) mod tests {
             assert_eq!(typed.query_failure(), Some(&failure));
         }
         assert_eq!(
-            SolidError::query_missing("query::op", "the edge's curve").to_string(),
+            SolidError::query("query::op", QueryFailure::Missing("the edge's curve")).to_string(),
             "query::op: the edge's curve is missing"
         );
         assert_eq!(
-            SolidError::query_failed("query::op", "the loop does not close").to_string(),
+            SolidError::query("query::op", QueryFailure::Failed("the loop does not close"))
+                .to_string(),
             "query::op: the loop does not close"
         );
         assert_eq!(
@@ -444,6 +470,20 @@ pub(super) mod tests {
             (F::PolyEdgeNotAtVertex, SM_ERR, K::InvalidInput),
             (F::PolyEdgeOutsideLoop, SM_ERR_NULL_POINTER, K::InvalidInput),
             (F::UndefinedScale, SM_ERR_INVALID_INPUT, K::InvalidInput),
+            (F::NoLoopClassifies, SM_ERR, K::Failed),
+            (F::FaceWithoutFaceuse, SM_ERR_NULL_POINTER, K::InvalidInput),
+            (
+                F::LoopuseWithoutVertexuse,
+                SM_ERR_NULL_POINTER,
+                K::InvalidInput,
+            ),
+            (
+                F::VertexuseWithoutVertex,
+                SM_ERR_NULL_POINTER,
+                K::InvalidInput,
+            ),
+            (F::BoundaryNotIntersected, SM_ERR, K::Failed),
+            (F::NoTrimmedCache, SM_ERR_NULL_POINTER, K::Missing),
         ];
         for (failure, code, kind) in cases {
             let e = SolidError::query("query::op", failure);
@@ -522,9 +562,6 @@ pub(super) mod tests {
         };
         #[rustfmt::skip] // one file per line, so conversions in parallel merge cleanly
         const PINNED: &[(&str, usize)] = &[
-            ("solidcore/src/query/brep/ray.rs", 2),
-            ("solidcore/src/query/brep/ray/live.rs", 4),
-            ("solidcore/src/query/face/p2.rs", 19),
         ];
         assert_pinned("query phrase-cause sites", &crate_sites(&PHRASES), PINNED);
     }
