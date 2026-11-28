@@ -679,6 +679,7 @@ mod tests {
 
     /// The index of the edge of `b` through `p` and of its vertex at `q`, in the lists the blend
     /// operations read.
+    #[allow(clippy::disallowed_methods)] // test helper finding its inputs, not ops geometry
     fn edge_and_vertex(b: &crate::Body, p: [f64; 3], q: [f64; 3]) -> (usize, usize) {
         use solidcore::geom::vector3d::Point3;
         use solidcore::query::api_queries::{edge_closest_point, vertex_get_point};
