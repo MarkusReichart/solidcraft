@@ -207,14 +207,9 @@ fn face_bound(b: &Brep, face: usize) -> Result<f64, HlrError> {
     }
 }
 
-/// The body `b` in the kernel's kinds ([`kernel_body_cancellable`], never cancelled).
-fn kernel_body(b: &Brep) -> Result<k::body::Brep, HlrError> {
-    kernel_body_cancellable(b, &|| false)
-}
-
 /// The body `b` in the kernel's kinds, polling `cancel` before each face. A blend face is its
 /// NURBS form, with its certified bound from its definition ([`face_bound`]).
-fn kernel_body_cancellable(b: &Brep, cancel: &dyn Fn() -> bool) -> Result<k::body::Brep, HlrError> {
+fn kernel_body(b: &Brep, cancel: &dyn Fn() -> bool) -> Result<k::body::Brep, HlrError> {
     let curve = |c| solidcore_convert::curve(c).map_err(|_| HlrError::Unsupported("edge curve"));
     let surface = |s: &Surface| match s {
         Surface::Blend { .. } => Err(HlrError::Unsupported(
@@ -305,7 +300,7 @@ pub fn prepare_cancellable(
     cancel: &dyn Fn() -> bool,
 ) -> Result<Prepared, HlrError> {
     crate::record_check::validate(b).map_err(|_| HlrError::Invalid("portable B-rep"))?;
-    k::prepare_cancellable(&kernel_body_cancellable(b, cancel)?, opts, cancel)
+    k::prepare_cancellable(&kernel_body(b, cancel)?, opts, cancel)
 }
 
 /// The hidden-line drawing of the scene `scene` of the bodies `defs` in `view`, on the calling
@@ -867,7 +862,7 @@ mod tests {
     fn blend_faces_reach_the_kernel_with_their_certified_bound() {
         let (rec, face) = variable_round();
         let eps = certified_bound(&rec, face);
-        let body = kernel_body(&rec).unwrap();
+        let body = kernel_body(&rec, &|| false).unwrap();
         for (i, f) in body.faces.iter().enumerate() {
             assert_eq!(f.bound, if i == face { eps } else { 0. }, "face {i}");
         }
@@ -894,7 +889,7 @@ mod tests {
                 .exact(),
             crate::face_surface::Exact::Torus { .. }
         ));
-        let body = kernel_body(&rec).unwrap();
+        let body = kernel_body(&rec, &|| false).unwrap();
         assert!(body.faces.iter().all(|f| f.bound == 0.));
     }
 
