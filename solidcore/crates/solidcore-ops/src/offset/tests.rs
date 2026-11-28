@@ -495,6 +495,64 @@ fn a_lens_whose_offset_is_empty_leaves_the_shell() {
     }
 }
 
+/// acid-1 stage 5's notch itself: the half torus R 30, r 8 (z >= 0) with a notch r 0.7 about
+/// (0, 38) cut up from below to its ceiling z = `ceiling`. The torus's outer side is at
+/// 30 + sqrt(64 - z^2), so the ceiling leaves a lens between the notch's circle and the side's
+/// (0.116 across at z = 3, 0.032 at 3.2), its two vertices the only places the side, the notch's
+/// wall and the ceiling meet.
+fn notched_half_torus(ceiling: f64) -> Body {
+    let torus = crate::make_torus([0.0; 3], 30.0, 8.0).unwrap();
+    let upper = make_box([-40.0, -40.0, 0.0], [80.0, 80.0, 16.0]).unwrap();
+    let half = crate::boolean::boolean(torus, upper, crate::BooleanOp::Intersect)
+        .unwrap()
+        .unwrap();
+    let notch = make_cylinder([0.0, 38.0, -1.0], 0.7, ceiling + 1.0).unwrap();
+    crate::boolean::boolean(half, notch, crate::BooleanOp::Subtract)
+        .unwrap()
+        .unwrap()
+}
+
+/// The notched half torus shelled 0.6 in, open at the bottom. On the ceiling's offset plane,
+/// z = ceiling + 0.6, the side's offset (r 7.4) is at 30 + sqrt(7.4^2 - z^2) (36.465 at
+/// z = 3.6, 36.348 at 3.8) and the notch's wall's offset (r 1.3) reaches in to 38 - 1.3 = 36.7:
+/// they no longer meet there, the lens's offset is empty, and the offset eliminates it. The
+/// wall's and the side's offsets meet directly up to z* = sqrt(7.4^2 - 6.7^2), where they part,
+/// below either ceiling's offset. So the cavity is the same for both ceilings: the half torus
+/// of r 7.4, less, up to z*, the r 1.3 disc 38 off the axis inside the side's offset
+/// (`discs_overlap`). The body is the half torus of r 8 less, up to the ceiling, the r 0.7 disc
+/// inside the side.
+#[test]
+#[allow(clippy::disallowed_methods)] // closed-form oracle and face picks, not ops geometry
+fn a_notch_whose_ceiling_sliver_closes_to_nothing_leaves_the_half_torus_shell() {
+    crate::test_corpus::rig_fixes();
+    let side = |r: f64| move |z: f64| 30.0 + (r * r - z * z).sqrt();
+    let half_torus = |r: f64| PI * PI * 30.0 * r * r;
+    let parts = (7.4_f64 * 7.4 - 6.7 * 6.7).sqrt();
+    let cavity = half_torus(7.4) - integral(0.0, parts, |z| discs_overlap(side(7.4)(z), 1.3, 38.0));
+    for ceiling in [3.0, 3.2] {
+        let body = notched_half_torus(ceiling);
+        let before = half_torus(8.0)
+            - integral(0.0, ceiling, |z| discs_overlap(side(8.0)(z), 0.7, 38.0));
+        assert!(
+            rel(volume(&body), before) < 1e-9,
+            "ceiling {ceiling}: body {}",
+            volume(&body)
+        );
+        let o = order(&body);
+        let bottom = face(&body, &o, |bx| {
+            bx.min().z.abs() < 1e-9 && bx.max().z.abs() < 1e-9
+        });
+        shell(&body, &o, &[bottom], -0.6).unwrap_or_else(|e| panic!("ceiling {ceiling}: {e:?}"));
+        let report = body.check(crate::CheckLevel::All).unwrap();
+        assert!(report.is_valid(), "ceiling {ceiling}: {}", report.text);
+        let removed = before - volume(&body);
+        assert!(
+            rel(removed, cavity) < 1e-9,
+            "ceiling {ceiling}: the shell took {removed:.17} away, the cavity is {cavity:.17}"
+        );
+    }
+}
+
 /// The same incidence graph before the seam disappears: the outer rim is
 /// 37.99 and the grown drill reaches 37.96, so their meridian still survives.
 #[test]
