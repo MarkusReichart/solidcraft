@@ -820,16 +820,21 @@ mod tests {
         ));
     }
 
-    /// A blend whose net is a plane, which no definition is rebuilt on: refused as an invalid
+    /// A blend whose definition names a support side of 0.5, which the record's structure
+    /// passes and the kernel's definition refuses (a side is +1 or -1): refused as an invalid
     /// record, naming why, as loading it into the kernel refuses it.
     #[test]
     fn a_blend_face_whose_definition_does_not_rebuild_is_refused() {
+        use solidcore_record::brep::blend::BlendDefinition;
         let (mut rec, face) = variable_round();
-        rec.faces[face].nurbs = Some(Surface::Plane {
-            origin: [0., 0., 30.],
-            u_axis: [1., 0., 0.],
-            v_axis: [0., 1., 0.],
-        });
+        let Surface::Blend { definition } = &mut rec.faces[face].surface else {
+            panic!("face {face} is a blend");
+        };
+        let BlendDefinition::Procedural(d) = definition.as_mut() else {
+            panic!("face {face} is a procedural blend");
+        };
+        d.sides[0] = 0.5;
+        crate::record_check::validate(&rec).unwrap();
         assert!(crate::face_surface::FaceSurface::of(&rec, face).is_err());
         assert!(matches!(
             prepare(&rec, &Options::default()),
